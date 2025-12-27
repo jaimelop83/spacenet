@@ -1,0 +1,12 @@
+img/
+checkpoints/
+__pycache__/
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.log
+.venv/
+.DS_Store
+.idea/
+*.pyc
