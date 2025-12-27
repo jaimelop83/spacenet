@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import os
 import random
 from datetime import datetime
 
 import torch
 import torch.distributed as dist
+from PIL import UnidentifiedImageError, Image
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, models, transforms
+from torch.utils.tensorboard import SummaryWriter
 
 
 def parse_args():
@@ -29,6 +32,14 @@ def parse_args():
     parser.set_defaults(class_weights=True)
     parser.add_argument("--out-dir", default="./checkpoints")
     parser.add_argument("--pretrained-encoder", default=None, help="Path to SimCLR encoder ckpt.")
+    parser.add_argument("--log-dir", default="./runs")
+    parser.add_argument("--csv-log", default="./logs/train_metrics.csv")
+    parser.add_argument(
+        "--aug-strength",
+        choices=["light", "default", "heavy"],
+        default="default",
+        help="Augmentation strength for ablation runs.",
+    )
     return parser.parse_args()
 
 
@@ -79,6 +90,52 @@ def compute_class_weights(dataset, device):
     return weights.to(device)
 
 
+def filter_bad_samples(samples):
+    good = []
+    bad = []
+    for path, target in samples:
+        try:
+            with Image.open(path) as img:
+                img.verify()
+            good.append((path, target))
+        except (UnidentifiedImageError, OSError):
+            bad.append(path)
+    return good, bad
+
+
+def build_train_transforms(image_size, aug_strength):
+    if aug_strength == "light":
+        return transforms.Compose(
+            [
+                transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ]
+        )
+    if aug_strength == "heavy":
+        return transforms.Compose(
+            [
+                transforms.RandomResizedCrop(image_size, scale=(0.4, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(15),
+                transforms.ColorJitter(0.4, 0.4, 0.4, 0.1),
+                transforms.RandomGrayscale(p=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ]
+        )
+    return transforms.Compose(
+        [
+            transforms.RandomResizedCrop(image_size, scale=(0.6, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.1, 0.1, 0.1, 0.05),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+
 def load_pretrained_encoder(model, path):
     ckpt = torch.load(path, map_location="cpu")
     if isinstance(ckpt, dict) and "encoder" in ckpt:
@@ -106,15 +163,7 @@ def main():
     distributed, rank, world_size, local_rank = init_distributed()
     set_seed(args.seed + rank)
 
-    train_tfms = transforms.Compose(
-        [
-            transforms.RandomResizedCrop(args.image_size, scale=(0.6, 1.0)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(0.1, 0.1, 0.1, 0.05),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ]
-    )
+    train_tfms = build_train_transforms(args.image_size, args.aug_strength)
     val_tfms = transforms.Compose(
         [
             transforms.Resize(args.image_size + 32),
@@ -125,11 +174,18 @@ def main():
     )
 
     full_ds = datasets.ImageFolder(args.data_root, transform=train_tfms)
+    full_ds.samples, bad = filter_bad_samples(full_ds.samples)
+    full_ds.imgs = full_ds.samples
+    if rank == 0 and bad:
+        print(f"Skipped {len(bad)} unreadable images during training.")
     val_size = int(len(full_ds) * args.val_split)
     train_size = len(full_ds) - val_size
     split_gen = torch.Generator().manual_seed(args.seed)
     train_ds, val_ds = random_split(full_ds, [train_size, val_size], generator=split_gen)
-    val_ds.dataset = datasets.ImageFolder(args.data_root, transform=val_tfms)
+    val_base = datasets.ImageFolder(args.data_root, transform=val_tfms)
+    val_base.samples = full_ds.samples
+    val_base.imgs = full_ds.samples
+    val_ds = Subset(val_base, val_ds.indices)
 
     if distributed:
         train_sampler = DistributedSampler(train_ds, num_replicas=world_size, rank=rank, shuffle=True)
@@ -179,6 +235,17 @@ def main():
 
     if rank == 0:
         os.makedirs(args.out_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(args.csv_log), exist_ok=True)
+        writer = SummaryWriter(log_dir=args.log_dir)
+        csv_exists = os.path.exists(args.csv_log)
+        csv_file = open(args.csv_log, "a", newline="")
+        csv_writer = csv.writer(csv_file)
+        if not csv_exists:
+            csv_writer.writerow(["epoch", "train_loss", "train_acc", "val_acc", "lr", "aug_strength"])
+    else:
+        writer = None
+        csv_file = None
+        csv_writer = None
 
     for epoch in range(1, args.epochs + 1):
         if distributed:
@@ -224,10 +291,17 @@ def main():
         val_acc = val_correct / max(1, val_total)
 
         if rank == 0:
+            lr = optimizer.param_groups[0]["lr"]
             print(
                 f"[{epoch:03d}/{args.epochs}] "
                 f"loss={train_loss:.4f} acc={train_acc:.3f} val_acc={val_acc:.3f}"
             )
+            csv_writer.writerow([epoch, f"{train_loss:.6f}", f"{train_acc:.6f}", f"{val_acc:.6f}", lr, args.aug_strength])
+            csv_file.flush()
+            writer.add_scalar("train/loss", train_loss, epoch)
+            writer.add_scalar("train/acc", train_acc, epoch)
+            writer.add_scalar("val/acc", val_acc, epoch)
+            writer.add_scalar("train/lr", lr, epoch)
             if epoch == args.epochs:
                 stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 ckpt = {
@@ -239,6 +313,9 @@ def main():
 
     if distributed:
         dist.destroy_process_group()
+    if rank == 0:
+        writer.close()
+        csv_file.close()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 img/
 checkpoints/
+logs/
+runs/
 __pycache__/
 *.pt
 *.pth

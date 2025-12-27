@@ -28,14 +28,27 @@ Notes:
 - Default model is `convnext_tiny` from torchvision; swap with `--model resnet50` or similar.
 - Checkpoints are saved to `./checkpoints` at the final epoch.
 - Use `--no-class-weights` to disable class-balanced loss.
+- Logs: CSV at `./logs/` and TensorBoard at `./runs/`.
+- Augmentation ablation: `--aug-strength light|default|heavy`.
 
 SimCLR pretraining (DDP):
 ```
 torchrun --nproc_per_node=2 pretrain_simclr.py --data-root ./img --epochs 200 --batch-size 128 --amp
 ```
 
+Resume SimCLR (DDP) and save every 10 epochs:
+```
+torchrun --nproc_per_node=2 pretrain_simclr.py --data-root ./img --epochs 200 --batch-size 128 --amp \
+  --resume ./checkpoints/simclr_convnext_tiny_<timestamp>.pt --save-every 10
+```
+
 Fine-tune from SimCLR encoder:
 ```
 torchrun --nproc_per_node=2 train.py --data-root ./img --epochs 30 --batch-size 64 --amp \
   --pretrained-encoder ./checkpoints/simclr_convnext_tiny_<timestamp>.pt
+```
+
+Augmentation ablation (light/default/heavy):
+```
+bash scripts/run_ablation.sh ./img ./checkpoints/simclr_convnext_tiny_<timestamp>.pt 30 64
 ```

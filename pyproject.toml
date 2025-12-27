@@ -7,6 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
   "torch",
   "torchvision",
+  "tensorboard",
 ]
 
 [tool.ruff]
