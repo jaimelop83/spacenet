@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument("--no-class-weights", dest="class_weights", action="store_false")
     parser.set_defaults(class_weights=True)
     parser.add_argument("--out-dir", default="./checkpoints")
+    parser.add_argument("--pretrained-encoder", default=None, help="Path to SimCLR encoder ckpt.")
     return parser.parse_args()
 
 
@@ -76,6 +77,28 @@ def compute_class_weights(dataset, device):
     counts = counts.clamp_min(1)
     weights = counts.sum() / (len(counts) * counts.float())
     return weights.to(device)
+
+
+def load_pretrained_encoder(model, path):
+    ckpt = torch.load(path, map_location="cpu")
+    if isinstance(ckpt, dict) and "encoder" in ckpt:
+        state = ckpt["encoder"]
+    elif isinstance(ckpt, dict) and "model" in ckpt:
+        state = ckpt["model"]
+    elif isinstance(ckpt, dict):
+        state = ckpt
+    else:
+        raise ValueError("Unsupported checkpoint format.")
+
+    cleaned = {}
+    for k, v in state.items():
+        if k.startswith("module."):
+            k = k[len("module.") :]
+        if k.startswith("encoder."):
+            k = k[len("encoder.") :]
+        cleaned[k] = v
+    missing, unexpected = model.load_state_dict(cleaned, strict=False)
+    return missing, unexpected
 
 
 def main():
@@ -134,6 +157,14 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(args.model, num_classes=len(full_ds.classes)).to(device)
+    if args.pretrained_encoder:
+        missing, unexpected = load_pretrained_encoder(model, args.pretrained_encoder)
+        if rank == 0:
+            print(f"Loaded pretrained encoder from {args.pretrained_encoder}")
+            if missing:
+                print(f"Missing keys: {missing}")
+            if unexpected:
+                print(f"Unexpected keys: {unexpected}")
     if distributed:
         model = DDP(model, device_ids=[local_rank])
 
