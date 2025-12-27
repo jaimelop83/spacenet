@@ -1,0 +1,13 @@
+[project]
+name = "spacenet"
+version = "0.1.0"
+description = "SpaceNet training scaffold for astronomical image classification."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch",
+  "torchvision",
+]
+
+[tool.ruff]
+line-length = 100
