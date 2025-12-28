@@ -91,6 +91,12 @@ python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
   --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv
 ```
 
+JWST preview download (to UNAS):
+```
+python scripts/download_jwst_previews.py --out-dir /mnt/personal_drive/jwst/previews \
+  --max-files 1000 --instruments NIRCAM MIRI
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \

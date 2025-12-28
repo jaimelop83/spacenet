@@ -9,6 +9,7 @@ dependencies = [
   "torchvision",
   "tensorboard",
   "matplotlib",
+  "astroquery",
 ]
 
 [tool.ruff]
