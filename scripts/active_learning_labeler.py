@@ -41,9 +41,12 @@ def main():
   </style>
 </head>
 <body>
-  <div class="panel">
+    <div class="panel">
     <h2 style="margin-top:0">Active Learning Labeler</h2>
     <p>Load the CSV from <code>logs/active_learning_batch.csv</code>, assign labels, then export.</p>
+    <div style="margin-bottom:8px;">
+      <a href="ood_gallery.html" style="font-size:12px;text-decoration:none;color:#2563eb;">Open OOD Gallery</a>
+    </div>
     <input type="file" id="fileInput" accept=".csv" />
     <button id="exportBtn">Export CSV</button>
   </div>
