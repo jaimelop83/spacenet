@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, models, transforms
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 
 def parse_args():
@@ -83,6 +83,7 @@ class FlatImageFolder(torch.utils.data.Dataset):
         self.root = Path(root)
         self.transform = transform
         self.samples = self._collect_images(self.root)
+        self.samples = self._filter_bad_paths(self.samples)
 
     @staticmethod
     def _collect_images(root):
@@ -92,6 +93,18 @@ class FlatImageFolder(torch.utils.data.Dataset):
             if path.is_file() and path.suffix.lower() in exts:
                 files.append(path)
         return sorted(files)
+
+    @staticmethod
+    def _filter_bad_paths(paths):
+        good = []
+        for path in paths:
+            try:
+                with Image.open(path) as img:
+                    img.verify()
+                good.append(path)
+            except (UnidentifiedImageError, OSError):
+                continue
+        return good
 
     def __len__(self):
         return len(self.samples)
@@ -211,6 +224,18 @@ def auto_threshold_from_id(scores, target_tpr):
     return float(torch.quantile(scores, q))
 
 
+def filter_bad_samples(samples):
+    good = []
+    for path, target in samples:
+        try:
+            with Image.open(path) as img:
+                img.verify()
+            good.append((path, target))
+        except (UnidentifiedImageError, OSError):
+            continue
+    return good
+
+
 def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
     with open(path, "a", newline="") as f:
         writer = csv.writer(f)
@@ -245,10 +270,14 @@ def main():
     )
 
     id_ds = datasets.ImageFolder(args.id_root, transform=val_tfms)
+    id_ds.samples = filter_bad_samples(id_ds.samples)
+    id_ds.imgs = id_ds.samples
     if args.ood_flat:
         ood_ds = FlatImageFolder(args.ood_root, transform=val_tfms)
     else:
         ood_ds = datasets.ImageFolder(args.ood_root, transform=val_tfms)
+        ood_ds.samples = filter_bad_samples(ood_ds.samples)
+        ood_ds.imgs = ood_ds.samples
     id_ds = PathDataset(id_ds)
     if isinstance(ood_ds, datasets.ImageFolder):
         ood_ds = PathDataset(ood_ds)
