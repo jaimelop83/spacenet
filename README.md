@@ -84,6 +84,13 @@ python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
   --metric max_softmax --threshold 0.5 --out-csv ./logs/ood_scores.csv
 ```
 
+Auto-threshold by target TPR (uses ID scores):
+```
+python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \

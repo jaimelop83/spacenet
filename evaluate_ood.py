@@ -34,6 +34,12 @@ def parse_args():
         default=None,
         help="Threshold for ID/OOD labels (max_softmax: >= is ID; energy: >= is ID).",
     )
+    parser.add_argument(
+        "--auto-threshold-tpr",
+        type=float,
+        default=None,
+        help="Auto-threshold using ID scores to reach target TPR (e.g., 0.95).",
+    )
     return parser.parse_args()
 
 
@@ -158,6 +164,14 @@ def fpr_at_tpr(tpr, fpr, target=0.95):
     return fpr[idx].item()
 
 
+def auto_threshold_from_id(scores, target_tpr):
+    target_tpr = float(target_tpr)
+    if not (0.0 < target_tpr < 1.0):
+        raise ValueError("--auto-threshold-tpr must be between 0 and 1.")
+    q = 1.0 - target_tpr
+    return float(torch.quantile(scores, q))
+
+
 def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
     with open(path, "a", newline="") as f:
         writer = csv.writer(f)
@@ -231,6 +245,11 @@ def main():
     auc, tpr, fpr = roc_auc(scores, labels)
     fpr95 = fpr_at_tpr(tpr, fpr, target=0.95)
 
+    threshold = args.threshold
+    if args.auto_threshold_tpr is not None:
+        threshold = auto_threshold_from_id(id_scores, args.auto_threshold_tpr)
+        print(f"auto_threshold={threshold:.6f} (target_tpr={args.auto_threshold_tpr})")
+
     print(f"metric={args.metric}")
     print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
     print(f"AUROC={auc:.4f} FPR@95TPR={fpr95:.4f}")
@@ -245,7 +264,7 @@ def main():
             id_paths,
             id_ds.dataset.classes,
             1,
-            args.threshold,
+            threshold,
         )
         write_scores_csv(
             args.out_csv,
@@ -254,7 +273,7 @@ def main():
             ood_paths,
             id_ds.dataset.classes,
             0,
-            args.threshold,
+            threshold,
         )
         print(f"Wrote per-image scores to {args.out_csv}")
 
