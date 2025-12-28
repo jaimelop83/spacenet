@@ -134,6 +134,12 @@ Batch composites via CSV (columns: r,g,b,out):
 python scripts/make_rgb_composite.py --triples-csv triples.csv --out dummy.png
 ```
 
+Build triples from JWST FITS (example filters):
+```
+python scripts/build_rgb_triples.py --fits-root /mnt/personal_drive/jwst/fits \
+  --out-csv /mnt/personal_drive/jwst/rgb_triples.csv --filters F090W,F200W,F444W
+```
+
 JWST progress and log rotation:
 ```
 bash scripts/check_jwst_progress.sh
