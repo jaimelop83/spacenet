@@ -130,6 +130,11 @@ bash scripts/check_jwst_progress.sh
 bash scripts/rotate_jwst_logs.sh 14
 ```
 
+Nightly cron schedule (default):
+- 21:00 FITS download
+- 21:30 log rotation (compress older logs)
+- 01:00 OOD eval on FITS (writes CSV to `/mnt/personal_drive/jwst/logs/`)
+
 
 Visual report (confusion matrix, sample grid, training curves):
 ```
