@@ -12,7 +12,7 @@ from torchvision import datasets, models, transforms
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate visual reports for SpaceNet.")
     parser.add_argument("--data-root", default="./img")
-    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--model", default="convnext_tiny")
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -75,6 +75,11 @@ def build_val_split(dataset, val_split, seed, transform):
     return Subset(val_ds, val_idx.indices)
 
 
+def find_latest_checkpoint(path_prefix):
+    candidates = sorted(Path(path_prefix).glob("spacenet_*"), key=lambda p: p.stat().st_mtime)
+    return candidates[-1] if candidates else None
+
+
 def compute_confusion(model, loader, num_classes, device):
     cm = torch.zeros((num_classes, num_classes), dtype=torch.int64)
     with torch.no_grad():
@@ -105,6 +110,28 @@ def save_confusion_matrix(cm, classes, path):
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+
+
+def save_class_metrics(cm, classes, path):
+    precision = []
+    recall = []
+    f1 = []
+    for i, cls in enumerate(classes):
+        tp = cm[i, i].item()
+        fp = cm[:, i].sum().item() - tp
+        fn = cm[i, :].sum().item() - tp
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / (tp + fn) if (tp + fn) else 0.0
+        f1_score = (2 * prec * rec / (prec + rec)) if (prec + rec) else 0.0
+        precision.append(prec)
+        recall.append(rec)
+        f1.append(f1_score)
+
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["class", "precision", "recall", "f1"])
+        for cls, p, r, f1s in zip(classes, precision, recall, f1):
+            writer.writerow([cls, f"{p:.4f}", f"{r:.4f}", f"{f1s:.4f}"])
 
 
 def save_sample_grid(model, dataset, classes, path, max_images, device):
@@ -183,6 +210,13 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    ckpt_path = args.checkpoint
+    if not ckpt_path:
+        latest = find_latest_checkpoint("./checkpoints")
+        if not latest:
+            raise FileNotFoundError("No spacenet_* checkpoints found in ./checkpoints")
+        ckpt_path = str(latest)
+
     val_tfms = transforms.Compose(
         [
             transforms.Resize(args.image_size + 32),
@@ -199,7 +233,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(args.model, num_classes=len(full_ds.classes)).to(device)
-    load_checkpoint(model, args.checkpoint)
+    load_checkpoint(model, ckpt_path)
     model.eval()
 
     val_loader = DataLoader(
@@ -212,10 +246,12 @@ def main():
 
     cm = compute_confusion(model, val_loader, len(full_ds.classes), device)
     save_confusion_matrix(cm, full_ds.classes, out_dir / "confusion_matrix.png")
+    save_class_metrics(cm, full_ds.classes, out_dir / "class_metrics.csv")
     save_sample_grid(model, val_ds, full_ds.classes, out_dir / "sample_grid.png", args.max_grid, device)
     save_curves(args.csv_log, out_dir / "training_curves.png")
 
     print(f"Saved reports to {out_dir}")
+    print(f"Checkpoint: {ckpt_path}")
 
 
 if __name__ == "__main__":

@@ -80,6 +80,5 @@ bash scripts/run_ood_eval.sh ./img ./ood_flat --ood-flat --metric energy --plot 
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \
-  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
   --csv-log ./logs/train_metrics.csv --out-dir ./reports
 ```
