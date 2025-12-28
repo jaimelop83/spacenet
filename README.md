@@ -159,11 +159,11 @@ python scripts/active_learning_labeler.py --checkpoint ./checkpoints/spacenet_co
 Serve UNAS and convert CSV paths to URLs (for thumbnails):
 ```
 cd /mnt/personal_drive
-nohup python -m http.server 8010 > /mnt/personal_drive/jwst/logs/unas_server.log 2>&1 &
+nohup python -m http.server 8001 > /mnt/personal_drive/jwst/logs/unas_server.log 2>&1 &
 
 python scripts/convert_paths_to_urls.py --in-csv ./logs/active_learning_batch.csv \
   --out-csv ./logs/active_learning_batch_urls.csv \
-  --root /mnt/personal_drive --base-url http://<your-lambda-quad-ip>:8010
+  --root /mnt/personal_drive --base-url http://<your-lambda-quad-ip>:8001
 ```
 
 Active learning retrain (uses latest checkpoint):
