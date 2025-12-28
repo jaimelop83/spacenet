@@ -228,7 +228,7 @@ def main():
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(args.model, num_classes=len(id_ds.classes)).to(device)
+    model = build_model(args.model, num_classes=len(id_ds.dataset.classes)).to(device)
     load_checkpoint(model, args.checkpoint)
     model.eval()
 
