@@ -83,7 +83,7 @@ class FlatImageFolder(torch.utils.data.Dataset):
         self.root = Path(root)
         self.transform = transform
         self.samples = self._collect_images(self.root)
-        self.samples = self._filter_bad_paths(self.samples)
+        self.samples, self.skipped = self._filter_bad_paths(self.samples)
 
     @staticmethod
     def _collect_images(root):
@@ -97,14 +97,16 @@ class FlatImageFolder(torch.utils.data.Dataset):
     @staticmethod
     def _filter_bad_paths(paths):
         good = []
+        skipped = 0
         for path in paths:
             try:
                 with Image.open(path) as img:
                     img.verify()
                 good.append(path)
             except (UnidentifiedImageError, OSError):
+                skipped += 1
                 continue
-        return good
+        return good, skipped
 
     def __len__(self):
         return len(self.samples)
@@ -226,14 +228,16 @@ def auto_threshold_from_id(scores, target_tpr):
 
 def filter_bad_samples(samples):
     good = []
+    skipped = 0
     for path, target in samples:
         try:
             with Image.open(path) as img:
                 img.verify()
             good.append((path, target))
         except (UnidentifiedImageError, OSError):
+            skipped += 1
             continue
-    return good
+    return good, skipped
 
 
 def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
@@ -270,13 +274,14 @@ def main():
     )
 
     id_ds = datasets.ImageFolder(args.id_root, transform=val_tfms)
-    id_ds.samples = filter_bad_samples(id_ds.samples)
+    id_ds.samples, id_skipped = filter_bad_samples(id_ds.samples)
     id_ds.imgs = id_ds.samples
     if args.ood_flat:
         ood_ds = FlatImageFolder(args.ood_root, transform=val_tfms)
+        ood_skipped = ood_ds.skipped
     else:
         ood_ds = datasets.ImageFolder(args.ood_root, transform=val_tfms)
-        ood_ds.samples = filter_bad_samples(ood_ds.samples)
+        ood_ds.samples, ood_skipped = filter_bad_samples(ood_ds.samples)
         ood_ds.imgs = ood_ds.samples
     id_ds = PathDataset(id_ds)
     if isinstance(ood_ds, datasets.ImageFolder):
@@ -343,6 +348,7 @@ def main():
 
         print(f"metric={args.metric}")
         print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
+        print(f"skipped_id={id_skipped} skipped_ood={ood_skipped}")
         print(f"AUROC={auc:.4f} FPR@95TPR={fpr95:.4f}")
         if args.plot:
             save_roc_plot(fpr, tpr, args.plot)
