@@ -31,7 +31,7 @@ def load_scores(csv_path):
 
 def safe_link(src, dest, copy=False):
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
+    if dest.exists() or dest.is_symlink():
         return
     if copy:
         dest.write_bytes(Path(src).read_bytes())
@@ -46,6 +46,7 @@ def write_html(items, out_path, title):
             f"<article class='card'><div class='thumb'><img src='{item['rel']}'></div>"
             f"<div class='meta'><h3>{item['name']}</h3><p>{item['score']}</p></div></article>"
         )
+    options = "".join(sorted({f"<option value='{item['name']}'>{item['name']}</option>" for item in items}))
     html = f"""<!doctype html>
 <html>
 <head>
@@ -61,18 +62,35 @@ def write_html(items, out_path, title):
     .meta {{ padding: 10px 12px 14px; }}
     .meta h3 {{ margin: 0 0 6px; font-size: 14px; }}
     .meta p {{ margin: 0; font-size: 12px; color: #5b6475; }}
-    .top {{ display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }}
+    .top {{ display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }}
     .top a {{ font-size: 12px; text-decoration: none; color: #2563eb; }}
+    select {{ padding: 6px 8px; border-radius: 6px; border: 1px solid #d7dce5; font-size: 12px; }}
   </style>
 </head>
 <body>
   <div class="top">
     <h1 style="margin:0">{title}</h1>
     <a href="ood_gallery.html">Back to histograms</a>
+    <label>
+      <select id="classFilter">
+        <option value="">All classes</option>
+        {options}
+      </select>
+    </label>
   </div>
   <div class="grid">
     {''.join(cards)}
   </div>
+  <script>
+    const select = document.getElementById('classFilter');
+    select.addEventListener('change', () => {{
+      const value = select.value;
+      document.querySelectorAll('.card').forEach(card => {{
+        const name = card.querySelector('h3').textContent;
+        card.style.display = (value === '' || name === value) ? '' : 'none';
+      }});
+    }});
+  </script>
 </body>
 </html>
 """
