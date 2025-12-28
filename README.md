@@ -71,3 +71,8 @@ python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
   --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
   --metric energy --plot ./logs/ood_roc.png
 ```
+
+Quick OOD eval using latest checkpoint:
+```
+bash scripts/run_ood_eval.sh ./img ./ood_flat --ood-flat --metric energy --plot ./logs/ood_roc.png
+```
