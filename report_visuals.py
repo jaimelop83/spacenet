@@ -132,6 +132,27 @@ def save_class_metrics(cm, classes, path):
         writer.writerow(["class", "precision", "recall", "f1"])
         for cls, p, r, f1s in zip(classes, precision, recall, f1):
             writer.writerow([cls, f"{p:.4f}", f"{r:.4f}", f"{f1s:.4f}"])
+    return precision, recall, f1
+
+
+def save_class_metrics_plot(classes, precision, recall, f1, path):
+    import matplotlib.pyplot as plt
+
+    x = range(len(classes))
+    width = 0.25
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar([i - width for i in x], precision, width, label="precision")
+    ax.bar(x, recall, width, label="recall")
+    ax.bar([i + width for i in x], f1, width, label="f1")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(classes, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("score")
+    ax.set_title("Per-class metrics")
+    ax.legend(loc="upper right")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
 
 
 def save_sample_grid(model, dataset, classes, path, max_images, device):
@@ -246,7 +267,8 @@ def main():
 
     cm = compute_confusion(model, val_loader, len(full_ds.classes), device)
     save_confusion_matrix(cm, full_ds.classes, out_dir / "confusion_matrix.png")
-    save_class_metrics(cm, full_ds.classes, out_dir / "class_metrics.csv")
+    precision, recall, f1 = save_class_metrics(cm, full_ds.classes, out_dir / "class_metrics.csv")
+    save_class_metrics_plot(full_ds.classes, precision, recall, f1, out_dir / "class_metrics.png")
     save_sample_grid(model, val_ds, full_ds.classes, out_dir / "sample_grid.png", args.max_grid, device)
     save_curves(args.csv_log, out_dir / "training_curves.png")
 
