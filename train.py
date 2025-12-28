@@ -40,6 +40,8 @@ def parse_args():
         default="default",
         help="Augmentation strength for ablation runs.",
     )
+    parser.add_argument("--save-every", type=int, default=5)
+    parser.add_argument("--resume", default=None, help="Path to checkpoint to resume from.")
     return parser.parse_args()
 
 
@@ -158,6 +160,20 @@ def load_pretrained_encoder(model, path):
     return missing, unexpected
 
 
+def load_resume_checkpoint(model, optimizer, scaler, path, distributed):
+    ckpt = torch.load(path, map_location="cpu")
+    if "model" not in ckpt:
+        raise ValueError("Resume checkpoint missing model weights.")
+    model_ref = model.module if distributed else model
+    model_ref.load_state_dict(ckpt["model"])
+    if "optimizer" in ckpt:
+        optimizer.load_state_dict(ckpt["optimizer"])
+    if "scaler" in ckpt and scaler is not None:
+        scaler.load_state_dict(ckpt["scaler"])
+    start_epoch = ckpt.get("epoch", 0) + 1
+    return start_epoch
+
+
 def main():
     args = parse_args()
     distributed, rank, world_size, local_rank = init_distributed()
@@ -213,7 +229,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model(args.model, num_classes=len(full_ds.classes)).to(device)
-    if args.pretrained_encoder:
+    if args.pretrained_encoder and not args.resume:
         missing, unexpected = load_pretrained_encoder(model, args.pretrained_encoder)
         if rank == 0:
             print(f"Loaded pretrained encoder from {args.pretrained_encoder}")
@@ -226,7 +242,12 @@ def main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
-    scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=args.amp)
+    start_epoch = 1
+    if args.resume:
+        start_epoch = load_resume_checkpoint(model, optimizer, scaler, args.resume, distributed)
+        if rank == 0:
+            print(f"Resuming from {args.resume} at epoch {start_epoch}")
 
     class_weights = None
     if args.class_weights:
@@ -247,7 +268,7 @@ def main():
         csv_file = None
         csv_writer = None
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         if distributed:
             train_sampler.set_epoch(epoch)
         model.train()
@@ -260,7 +281,7 @@ def main():
             targets = targets.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=args.amp):
+            with torch.amp.autocast("cuda", enabled=args.amp):
                 outputs = model(images)
                 loss = criterion(outputs, targets)
             scaler.scale(loss).backward()
@@ -302,10 +323,14 @@ def main():
             writer.add_scalar("train/acc", train_acc, epoch)
             writer.add_scalar("val/acc", val_acc, epoch)
             writer.add_scalar("train/lr", lr, epoch)
-            if epoch == args.epochs:
+            if epoch % args.save_every == 0 or epoch == args.epochs:
                 stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_ref = model.module if distributed else model
                 ckpt = {
-                    "model": model.module.state_dict() if distributed else model.state_dict(),
+                    "model": model_ref.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "scaler": scaler.state_dict() if args.amp else None,
+                    "epoch": epoch,
                     "classes": full_ds.classes,
                     "args": vars(args),
                 }

@@ -48,6 +48,12 @@ torchrun --nproc_per_node=2 train.py --data-root ./img --epochs 30 --batch-size 
   --pretrained-encoder ./checkpoints/simclr_convnext_tiny_<timestamp>.pt
 ```
 
+Resume fine-tune (DDP) and save every 5 epochs:
+```
+torchrun --nproc_per_node=2 train.py --data-root ./img --epochs 30 --batch-size 64 --amp \
+  --resume ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt --save-every 5
+```
+
 Augmentation ablation (light/default/heavy):
 ```
 bash scripts/run_ablation.sh ./img ./checkpoints/simclr_convnext_tiny_<timestamp>.pt 30 64
