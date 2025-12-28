@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
+from PIL import Image
 
 
 def parse_args():
@@ -23,6 +24,8 @@ def parse_args():
         help="Score used for OOD detection.",
     )
     parser.add_argument("--temperature", type=float, default=1.0, help="Energy temperature.")
+    parser.add_argument("--ood-flat", action="store_true", help="Treat ood-root as a flat folder.")
+    parser.add_argument("--plot", default=None, help="Path to save ROC curve plot (png).")
     return parser.parse_args()
 
 
@@ -40,6 +43,33 @@ def build_model(name, num_classes):
     else:
         raise ValueError("Unsupported model head; add a head mapping here.")
     return model
+
+
+class FlatImageFolder(torch.utils.data.Dataset):
+    def __init__(self, root, transform=None):
+        self.root = Path(root)
+        self.transform = transform
+        self.samples = self._collect_images(self.root)
+
+    @staticmethod
+    def _collect_images(root):
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+        files = []
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix.lower() in exts:
+                files.append(path)
+        return sorted(files)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        path = self.samples[idx]
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+        if self.transform:
+            img = self.transform(img)
+        return img, 0
 
 
 def load_checkpoint(model, path):
@@ -80,6 +110,23 @@ def roc_auc(scores, labels):
     return auc, tpr, fpr
 
 
+def save_roc_plot(fpr, tpr, path):
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        raise RuntimeError("matplotlib is required for --plot") from exc
+    plt.figure(figsize=(5, 5))
+    plt.plot(fpr.numpy(), tpr.numpy(), label="ROC")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Random")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("OOD ROC Curve")
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()
+
+
 def fpr_at_tpr(tpr, fpr, target=0.95):
     idx = torch.searchsorted(tpr, torch.tensor(target, device=tpr.device), right=False)
     idx = min(int(idx.item()), len(fpr) - 1)
@@ -105,7 +152,10 @@ def main():
     )
 
     id_ds = datasets.ImageFolder(args.id_root, transform=val_tfms)
-    ood_ds = datasets.ImageFolder(args.ood_root, transform=val_tfms)
+    if args.ood_flat:
+        ood_ds = FlatImageFolder(args.ood_root, transform=val_tfms)
+    else:
+        ood_ds = datasets.ImageFolder(args.ood_root, transform=val_tfms)
     id_loader = DataLoader(
         id_ds,
         batch_size=args.batch_size,
@@ -138,6 +188,9 @@ def main():
     print(f"metric={args.metric}")
     print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
     print(f"AUROC={auc:.4f} FPR@95TPR={fpr95:.4f}")
+    if args.plot:
+        save_roc_plot(fpr, tpr, args.plot)
+        print(f"Saved ROC curve to {args.plot}")
 
 
 if __name__ == "__main__":

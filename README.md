@@ -64,3 +64,10 @@ OOD evaluation (requires a separate OOD folder with class subfolders):
 python evaluate_ood.py --id-root ./img --ood-root ./ood_img \
   --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt --metric max_softmax
 ```
+
+OOD evaluation with a flat folder and ROC plot:
+```
+python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --metric energy --plot ./logs/ood_roc.png
+```

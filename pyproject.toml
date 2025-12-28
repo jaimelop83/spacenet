@@ -8,6 +8,7 @@ dependencies = [
   "torch",
   "torchvision",
   "tensorboard",
+  "matplotlib",
 ]
 
 [tool.ruff]
