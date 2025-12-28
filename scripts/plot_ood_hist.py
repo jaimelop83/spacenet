@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+from collections import defaultdict
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -11,12 +12,14 @@ def parse_args():
     parser.add_argument("--csv-path", required=True)
     parser.add_argument("--out-path", required=True)
     parser.add_argument("--bins", type=int, default=50)
+    parser.add_argument("--per-class", action="store_true", help="Plot by predicted class.")
     return parser.parse_args()
 
 
 def load_scores(csv_path):
     id_scores = []
     ood_scores = []
+    per_class = defaultdict(list)
     with open(csv_path, newline="") as f:
         reader = csv.reader(f)
         for row in reader:
@@ -24,11 +27,13 @@ def load_scores(csv_path):
                 continue
             score = float(row[1])
             ood_pred = row[3].strip()
+            pred_class = row[2].strip()
             if ood_pred == "ID":
                 id_scores.append(score)
             elif ood_pred == "OOD":
                 ood_scores.append(score)
-    return id_scores, ood_scores
+            per_class[pred_class].append(score)
+    return id_scores, ood_scores, per_class
 
 
 def hist_counts(values, bins, vmin, vmax):
@@ -52,7 +57,7 @@ def main():
     out_path = Path(args.out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    id_scores, ood_scores = load_scores(csv_path)
+    id_scores, ood_scores, per_class = load_scores(csv_path)
     if not id_scores and not ood_scores:
         raise SystemExit("No scores found.")
 
@@ -62,6 +67,11 @@ def main():
     id_counts = hist_counts(id_scores, bins, vmin, vmax)
     ood_counts = hist_counts(ood_scores, bins, vmin, vmax)
     max_count = max(max(id_counts), max(ood_counts), 1)
+    class_counts = None
+    if args.per_class:
+        class_counts = {k: hist_counts(v, bins, vmin, vmax) for k, v in per_class.items()}
+        if class_counts:
+            max_count = max(max_count, max(max(c) for c in class_counts.values()))
 
     width, height = 800, 400
     margin_left, margin_right = 60, 20
@@ -80,31 +90,62 @@ def main():
     draw.line([(x0, margin_top), (x0, y0), (width - margin_right, y0)], fill=(0, 0, 0))
 
     # Bars
-    for i in range(bins):
-        x_left = x0 + i * bar_w
-        x_right = x_left + bar_w - 1
-        id_h = int((id_counts[i] / max_count) * plot_h)
-        ood_h = int((ood_counts[i] / max_count) * plot_h)
-        if id_h:
-            draw.rectangle(
-                [x_left, y0 - id_h, x_right, y0],
-                fill=(66, 133, 244, 120),
-                outline=None,
-            )
-        if ood_h:
-            draw.rectangle(
-                [x_left, y0 - ood_h, x_right, y0],
-                fill=(219, 68, 55, 120),
-                outline=None,
-            )
+    if class_counts:
+        palette = [
+            (66, 133, 244, 90),
+            (219, 68, 55, 90),
+            (15, 157, 88, 90),
+            (244, 180, 0, 90),
+            (171, 71, 188, 90),
+            (0, 172, 193, 90),
+            (158, 158, 158, 90),
+            (255, 112, 67, 90),
+        ]
+        class_names = sorted(class_counts.keys())
+        for i in range(bins):
+            x_left = x0 + i * bar_w
+            x_right = x_left + bar_w - 1
+            for idx, cls in enumerate(class_names):
+                count = class_counts[cls][i]
+                if not count:
+                    continue
+                h = int((count / max_count) * plot_h)
+                color = palette[idx % len(palette)]
+                draw.rectangle([x_left, y0 - h, x_right, y0], fill=color, outline=None)
+    else:
+        for i in range(bins):
+            x_left = x0 + i * bar_w
+            x_right = x_left + bar_w - 1
+            id_h = int((id_counts[i] / max_count) * plot_h)
+            ood_h = int((ood_counts[i] / max_count) * plot_h)
+            if id_h:
+                draw.rectangle(
+                    [x_left, y0 - id_h, x_right, y0],
+                    fill=(66, 133, 244, 120),
+                    outline=None,
+                )
+            if ood_h:
+                draw.rectangle(
+                    [x_left, y0 - ood_h, x_right, y0],
+                    fill=(219, 68, 55, 120),
+                    outline=None,
+                )
 
     # Labels
     draw.text((margin_left, 5), "OOD Score Distribution", fill=(0, 0, 0), font=font)
     draw.text((margin_left, height - 20), f"min={vmin:.3f} max={vmax:.3f}", fill=(0, 0, 0), font=font)
-    draw.rectangle([width - 180, margin_top, width - 160, margin_top + 10], fill=(66, 133, 244, 120))
-    draw.text((width - 155, margin_top), "ID", fill=(0, 0, 0), font=font)
-    draw.rectangle([width - 180, margin_top + 15, width - 160, margin_top + 25], fill=(219, 68, 55, 120))
-    draw.text((width - 155, margin_top + 15), "OOD", fill=(0, 0, 0), font=font)
+    if class_counts:
+        class_names = sorted(class_counts.keys())
+        for idx, cls in enumerate(class_names[:8]):
+            color = palette[idx % len(palette)]
+            y = margin_top + idx * 15
+            draw.rectangle([width - 200, y, width - 180, y + 10], fill=color)
+            draw.text((width - 175, y), cls[:14], fill=(0, 0, 0), font=font)
+    else:
+        draw.rectangle([width - 180, margin_top, width - 160, margin_top + 10], fill=(66, 133, 244, 120))
+        draw.text((width - 155, margin_top), "ID", fill=(0, 0, 0), font=font)
+        draw.rectangle([width - 180, margin_top + 15, width - 160, margin_top + 25], fill=(219, 68, 55, 120))
+        draw.text((width - 155, margin_top + 15), "OOD", fill=(0, 0, 0), font=font)
 
     img.convert("RGB").save(out_path)
     print(f"saved {out_path}")
