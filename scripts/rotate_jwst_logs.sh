@@ -9,5 +9,5 @@ if [[ ! -d "$LOG_DIR" ]]; then
   exit 1
 fi
 
-find "$LOG_DIR" -type f -name 'jwst_fits_*.log' -mtime +"$KEEP_DAYS" -print -delete
-echo "Rotated logs older than ${KEEP_DAYS} days in $LOG_DIR"
+find "$LOG_DIR" -type f -name 'jwst_fits_*.log' -mtime +"$KEEP_DAYS" -print -exec gzip -f {} \\;
+echo "Compressed logs older than ${KEEP_DAYS} days in $LOG_DIR"

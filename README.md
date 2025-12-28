@@ -109,6 +109,18 @@ bash scripts/check_jwst_progress.sh
 bash scripts/rotate_jwst_logs.sh 14
 ```
 
+JWST daily summary email (set env vars first):
+```
+export JWST_EMAIL_TO="you@example.com"
+export JWST_EMAIL_FROM="you@example.com"
+export JWST_SMTP_HOST="smtp.example.com"
+export JWST_SMTP_PORT="587"
+export JWST_SMTP_USER="you@example.com"
+export JWST_SMTP_PASS="your_app_password"
+
+python scripts/send_jwst_summary.py
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \
