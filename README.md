@@ -103,6 +103,12 @@ python scripts/download_jwst_fits.py --out-dir /mnt/personal_drive/jwst/fits \
   --max-files 500 --instruments NIRCAM MIRI
 ```
 
+JWST progress and log rotation:
+```
+bash scripts/check_jwst_progress.sh
+bash scripts/rotate_jwst_logs.sh 14
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \
