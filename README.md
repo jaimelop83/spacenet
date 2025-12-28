@@ -58,3 +58,9 @@ Augmentation ablation (light/default/heavy):
 ```
 bash scripts/run_ablation.sh ./img ./checkpoints/simclr_convnext_tiny_<timestamp>.pt 30 64
 ```
+
+OOD evaluation (requires a separate OOD folder with class subfolders):
+```
+python evaluate_ood.py --id-root ./img --ood-root ./ood_img \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt --metric max_softmax
+```
