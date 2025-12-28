@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 from pathlib import Path
 
 import torch
@@ -26,6 +27,13 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=1.0, help="Energy temperature.")
     parser.add_argument("--ood-flat", action="store_true", help="Treat ood-root as a flat folder.")
     parser.add_argument("--plot", default=None, help="Path to save ROC curve plot (png).")
+    parser.add_argument("--out-csv", default=None, help="Write per-image OOD scores to CSV.")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Threshold for ID/OOD labels (max_softmax: >= is ID; energy: >= is ID).",
+    )
     return parser.parse_args()
 
 
@@ -69,7 +77,20 @@ class FlatImageFolder(torch.utils.data.Dataset):
             img = img.convert("RGB")
         if self.transform:
             img = self.transform(img)
-        return img, 0
+        return img, 0, str(path)
+
+
+class PathDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        path, target = self.dataset.samples[idx]
+        image, _ = self.dataset[idx]
+        return image, target, path
 
 
 def load_checkpoint(model, path):
@@ -85,17 +106,21 @@ def load_checkpoint(model, path):
 
 def compute_scores(model, loader, metric, temperature, device):
     scores = []
+    preds = []
+    paths = []
     with torch.no_grad():
-        for images, _ in loader:
+        for images, _, batch_paths in loader:
             images = images.to(device, non_blocking=True)
             logits = model(images)
             if metric == "max_softmax":
                 probs = torch.softmax(logits, dim=1)
                 score = probs.max(dim=1).values
             else:
-                score = -torch.logsumexp(logits / temperature, dim=1)
+                score = torch.logsumexp(logits / temperature, dim=1)
             scores.append(score.detach().cpu())
-    return torch.cat(scores, dim=0)
+            preds.append(logits.argmax(dim=1).detach().cpu())
+            paths.extend(batch_paths)
+    return torch.cat(scores, dim=0), torch.cat(preds, dim=0), paths
 
 
 def roc_auc(scores, labels):
@@ -133,6 +158,20 @@ def fpr_at_tpr(tpr, fpr, target=0.95):
     return fpr[idx].item()
 
 
+def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
+    with open(path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if f.tell() == 0:
+            writer.writerow(["path", "score", "pred_class", "ood_pred", "is_id"])
+        for score, pred, p in zip(scores, preds, paths):
+            if threshold is None:
+                ood_pred = ""
+            else:
+                is_id = score >= threshold
+                ood_pred = "ID" if is_id else "OOD"
+            writer.writerow([p, f"{score:.6f}", classes[pred], ood_pred, label])
+
+
 def main():
     args = parse_args()
     id_root = Path(args.id_root)
@@ -156,6 +195,9 @@ def main():
         ood_ds = FlatImageFolder(args.ood_root, transform=val_tfms)
     else:
         ood_ds = datasets.ImageFolder(args.ood_root, transform=val_tfms)
+    id_ds = PathDataset(id_ds)
+    if isinstance(ood_ds, datasets.ImageFolder):
+        ood_ds = PathDataset(ood_ds)
     id_loader = DataLoader(
         id_ds,
         batch_size=args.batch_size,
@@ -176,8 +218,12 @@ def main():
     load_checkpoint(model, args.checkpoint)
     model.eval()
 
-    id_scores = compute_scores(model, id_loader, args.metric, args.temperature, device)
-    ood_scores = compute_scores(model, ood_loader, args.metric, args.temperature, device)
+    id_scores, id_preds, id_paths = compute_scores(
+        model, id_loader, args.metric, args.temperature, device
+    )
+    ood_scores, ood_preds, ood_paths = compute_scores(
+        model, ood_loader, args.metric, args.temperature, device
+    )
 
     scores = torch.cat([id_scores, ood_scores], dim=0)
     labels = torch.cat([torch.ones_like(id_scores), torch.zeros_like(ood_scores)], dim=0)
@@ -191,6 +237,26 @@ def main():
     if args.plot:
         save_roc_plot(fpr, tpr, args.plot)
         print(f"Saved ROC curve to {args.plot}")
+    if args.out_csv:
+        write_scores_csv(
+            args.out_csv,
+            id_scores,
+            id_preds,
+            id_paths,
+            id_ds.dataset.classes,
+            1,
+            args.threshold,
+        )
+        write_scores_csv(
+            args.out_csv,
+            ood_scores,
+            ood_preds,
+            ood_paths,
+            id_ds.dataset.classes,
+            0,
+            args.threshold,
+        )
+        print(f"Wrote per-image scores to {args.out_csv}")
 
 
 if __name__ == "__main__":

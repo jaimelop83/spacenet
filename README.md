@@ -77,6 +77,13 @@ Quick OOD eval using latest checkpoint:
 bash scripts/run_ood_eval.sh ./img ./ood_flat --ood-flat --metric energy --plot ./logs/ood_roc.png
 ```
 
+OOD per-image scores (optional threshold to label ID/OOD):
+```
+python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --metric max_softmax --threshold 0.5 --out-csv ./logs/ood_scores.csv
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \
