@@ -360,23 +360,23 @@ def main():
                 id_scores,
                 id_preds,
                 id_paths,
-            id_ds.dataset.classes,
-            1,
-            threshold,
-            id_skipped,
-            ood_skipped,
-        )
-        write_scores_csv(
-            args.out_csv,
-            ood_scores,
-            ood_preds,
-            ood_paths,
-            id_ds.dataset.classes,
-            0,
-            threshold,
-            id_skipped,
-            ood_skipped,
-        )
+                id_ds.dataset.classes,
+                1,
+                threshold,
+                id_skipped,
+                ood_skipped,
+            )
+            write_scores_csv(
+                args.out_csv,
+                ood_scores,
+                ood_preds,
+                ood_paths,
+                id_ds.dataset.classes,
+                0,
+                threshold,
+                id_skipped,
+                ood_skipped,
+            )
             print(f"Wrote per-image scores to {args.out_csv}")
 
     if distributed:
