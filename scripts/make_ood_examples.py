@@ -11,6 +11,16 @@ def parse_args():
     parser.add_argument("--out-dir", default="/home/jaimelop/spacenet/reports/ood_examples")
     parser.add_argument("--top-n", type=int, default=60)
     parser.add_argument("--copy", action="store_true", help="Copy images instead of symlinking.")
+    parser.add_argument(
+        "--include-pattern",
+        default="",
+        help="Only include files whose names contain this substring (case-insensitive).",
+    )
+    parser.add_argument(
+        "--exclude-pattern",
+        default="rate,uncal,rateints,trapsfilled",
+        help="Comma-separated substrings to exclude (case-insensitive).",
+    )
     return parser.parse_args()
 
 
@@ -103,6 +113,18 @@ def main():
     if not rows:
         raise SystemExit("No scores found.")
 
+    include = args.include_pattern.strip().lower()
+    exclude = [s.strip().lower() for s in args.exclude_pattern.split(",") if s.strip()]
+
+    def allowed(path):
+        name = Path(path).name.lower()
+        if include and include not in name:
+            return False
+        for bad in exclude:
+            if bad and bad in name:
+                return False
+        return True
+
     ood_rows = [r for r in rows if r[3] == "OOD"]
     id_rows = [r for r in rows if r[3] == "ID"]
     ood_rows.sort(key=lambda r: r[1])
@@ -115,8 +137,14 @@ def main():
     id_dir.mkdir(parents=True, exist_ok=True)
 
     ood_items = []
+    skipped_missing = 0
     for path, score, pred_class, _ in ood_rows[: args.top_n]:
+        if not allowed(path):
+            continue
         src = Path(path)
+        if not src.exists():
+            skipped_missing += 1
+            continue
         dest = ood_dir / src.name
         safe_link(src, dest, copy=args.copy)
         ood_items.append(
@@ -129,7 +157,12 @@ def main():
 
     id_items = []
     for path, score, pred_class, _ in id_rows[: args.top_n]:
+        if not allowed(path):
+            continue
         src = Path(path)
+        if not src.exists():
+            skipped_missing += 1
+            continue
         dest = id_dir / src.name
         safe_link(src, dest, copy=args.copy)
         id_items.append(
@@ -144,6 +177,8 @@ def main():
     write_html(id_items, out_dir.parent / "ood_examples_id.html", "ID Examples")
     print(f"wrote {out_dir.parent / 'ood_examples_ood.html'}")
     print(f"wrote {out_dir.parent / 'ood_examples_id.html'}")
+    if skipped_missing:
+        print(f"skipped_missing={skipped_missing}")
 
 
 if __name__ == "__main__":
