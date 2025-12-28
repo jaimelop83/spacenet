@@ -10,6 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate a lightweight labeling HTML.")
     parser.add_argument("--checkpoint", required=True, help="Checkpoint with class list.")
     parser.add_argument("--out", default="/home/jaimelop/spacenet/reports/active_labeler.html")
+    parser.add_argument("--csv-path", default="/home/jaimelop/spacenet/logs/active_learning_batch.csv")
     return parser.parse_args()
 
 
@@ -36,6 +37,7 @@ def main():
     th, td {{ border-bottom: 1px solid #eef1f6; padding: 6px; text-align: left; }}
     select {{ padding: 4px; }}
     button {{ padding: 8px 12px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }}
+    .thumb {{ width: 120px; height: 90px; object-fit: cover; border: 1px solid #e5e7ef; border-radius: 6px; }}
   </style>
 </head>
 <body>
@@ -48,7 +50,7 @@ def main():
   <div class="panel">
     <table id="table">
       <thead>
-        <tr><th>path</th><th>pred_class</th><th>confidence</th><th>entropy</th><th>label</th></tr>
+        <tr><th>preview</th><th>path</th><th>pred_class</th><th>confidence</th><th>entropy</th><th>label</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -63,6 +65,12 @@ def main():
       tbody.innerHTML = '';
       rows.forEach((row, idx) => {{
         const tr = document.createElement('tr');
+        const imgTd = document.createElement('td');
+        const img = document.createElement('img');
+        img.src = row.path;
+        img.className = 'thumb';
+        imgTd.appendChild(img);
+        tr.appendChild(imgTd);
         ['path','pred_class','confidence','entropy'].forEach(key => {{
           const td = document.createElement('td');
           td.textContent = row[key];
@@ -119,6 +127,23 @@ def main():
       a.click();
       URL.revokeObjectURL(url);
     }});
+
+    // Auto-load default CSV if present
+    fetch('{args.csv_path}')
+      .then(r => r.ok ? r.text() : null)
+      .then(text => {{
+        if (!text) return;
+        const lines = text.trim().split(/\\r?\\n/);
+        const header = lines.shift().split(',');
+        rows = lines.map(line => {{
+          const parts = line.split(',');
+          const obj = {{}};
+          header.forEach((h, i) => obj[h] = parts[i] || '');
+          return obj;
+        }});
+        render();
+      }})
+      .catch(() => {{}});
   </script>
 </body>
 </html>
