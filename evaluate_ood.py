@@ -147,10 +147,17 @@ def load_checkpoint(model, path):
 def gather_tensors(tensor):
     if not dist.is_available() or not dist.is_initialized():
         return tensor
+    if tensor.device.type == "cpu":
+        if torch.cuda.is_available():
+            tensor = tensor.to("cuda")
+        else:
+            gathered = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gathered, tensor)
+            return torch.cat(gathered, dim=0)
     world_size = dist.get_world_size()
     gathered = [torch.zeros_like(tensor) for _ in range(world_size)]
     dist.all_gather(gathered, tensor)
-    return torch.cat(gathered, dim=0)
+    return torch.cat(gathered, dim=0).cpu()
 
 
 def gather_paths(paths):
