@@ -128,6 +128,10 @@ def main():
       <span class="chip">Updated: {updated}</span>
       <span class="chip">Theme: OOD Preview</span>
     </div>
+    <div class="stats" style="margin-top:10px;">
+      <span class="chip"><a href="ood_examples_ood.html" style="text-decoration:none;color:inherit;">View OOD Examples</a></span>
+      <span class="chip"><a href="ood_examples_id.html" style="text-decoration:none;color:inherit;">View ID Examples</a></span>
+    </div>
   </header>
   <main>
     <div class="grid">
