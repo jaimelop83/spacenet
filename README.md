@@ -124,6 +124,16 @@ python scripts/download_jwst_fits.py --out-dir /mnt/personal_drive/jwst/fits \
   --max-files 500 --instruments NIRCAM MIRI
 ```
 
+RGB composite from multi-filter FITS:
+```
+python scripts/make_rgb_composite.py --r R.fits --g G.fits --b B.fits --out composite.png
+```
+
+Batch composites via CSV (columns: r,g,b,out):
+```
+python scripts/make_rgb_composite.py --triples-csv triples.csv --out dummy.png
+```
+
 JWST progress and log rotation:
 ```
 bash scripts/check_jwst_progress.sh
