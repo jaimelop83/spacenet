@@ -97,6 +97,12 @@ python scripts/download_jwst_previews.py --out-dir /mnt/personal_drive/jwst/prev
   --max-files 1000 --instruments NIRCAM MIRI
 ```
 
+JWST FITS download (to UNAS):
+```
+python scripts/download_jwst_fits.py --out-dir /mnt/personal_drive/jwst/fits \
+  --max-files 500 --instruments NIRCAM MIRI
+```
+
 Visual report (confusion matrix, sample grid, training curves):
 ```
 python report_visuals.py --data-root ./img \
