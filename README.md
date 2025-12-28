@@ -151,6 +151,16 @@ python scripts/active_learning_merge.py --labels-csv ./logs/active_learning_batc
   --out-root ./img_active --copy
 ```
 
+Active learning label UI (generates HTML):
+```
+python scripts/active_learning_labeler.py --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt
+```
+
+Active learning retrain (uses latest checkpoint):
+```
+bash scripts/active_learning_train.sh ./img_active
+```
+
 JWST progress and log rotation:
 ```
 bash scripts/check_jwst_progress.sh
