@@ -156,6 +156,16 @@ Active learning label UI (generates HTML):
 python scripts/active_learning_labeler.py --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt
 ```
 
+Serve UNAS and convert CSV paths to URLs (for thumbnails):
+```
+cd /mnt/personal_drive
+nohup python -m http.server 8010 > /mnt/personal_drive/jwst/logs/unas_server.log 2>&1 &
+
+python scripts/convert_paths_to_urls.py --in-csv ./logs/active_learning_batch.csv \
+  --out-csv ./logs/active_learning_batch_urls.csv \
+  --root /mnt/personal_drive --base-url http://<your-lambda-quad-ip>:8010
+```
+
 Active learning retrain (uses latest checkpoint):
 ```
 bash scripts/active_learning_train.sh ./img_active

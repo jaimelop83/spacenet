@@ -10,7 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate a lightweight labeling HTML.")
     parser.add_argument("--checkpoint", required=True, help="Checkpoint with class list.")
     parser.add_argument("--out", default="/home/jaimelop/spacenet/reports/active_labeler.html")
-    parser.add_argument("--csv-path", default="/home/jaimelop/spacenet/logs/active_learning_batch.csv")
+    parser.add_argument("--csv-path", default="/home/jaimelop/spacenet/logs/active_learning_batch_urls.csv")
     return parser.parse_args()
 
 
