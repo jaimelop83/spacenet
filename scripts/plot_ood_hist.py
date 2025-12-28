@@ -13,6 +13,7 @@ def parse_args():
     parser.add_argument("--out-path", required=True)
     parser.add_argument("--bins", type=int, default=50)
     parser.add_argument("--per-class", action="store_true", help="Plot by predicted class.")
+    parser.add_argument("--per-class-dir", default=None, help="Output directory for per-class PNGs.")
     return parser.parse_args()
 
 
@@ -149,6 +150,26 @@ def main():
 
     img.convert("RGB").save(out_path)
     print(f"saved {out_path}")
+
+    if args.per_class_dir and class_counts:
+        out_dir = Path(args.per_class_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for cls, counts in class_counts.items():
+            img_c = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+            draw_c = ImageDraw.Draw(img_c)
+            draw_c.line([(x0, margin_top), (x0, y0), (width - margin_right, y0)], fill=(0, 0, 0))
+            for i in range(bins):
+                x_left = x0 + i * bar_w
+                x_right = x_left + bar_w - 1
+                h = int((counts[i] / max_count) * plot_h)
+                if h:
+                    draw_c.rectangle([x_left, y0 - h, x_right, y0], fill=(66, 133, 244, 160))
+            draw_c.text((margin_left, 5), f"OOD Scores: {cls}", fill=(0, 0, 0), font=font)
+            draw_c.text((margin_left, height - 20), f"min={vmin:.3f} max={vmax:.3f}", fill=(0, 0, 0), font=font)
+            safe_name = cls.replace("/", "_").replace(" ", "_")
+            out_file = out_dir / f"{safe_name}.png"
+            img_c.convert("RGB").save(out_file)
+        print(f"saved per-class plots to {out_dir}")
 
 
 if __name__ == "__main__":
