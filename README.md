@@ -140,6 +140,17 @@ python scripts/build_rgb_triples.py --fits-root /mnt/personal_drive/jwst/fits \
   --out-csv /mnt/personal_drive/jwst/rgb_triples.csv --filters F090W,F200W,F444W
 ```
 
+Active learning loop (rank unlabeled + merge labels):
+```
+python scripts/active_learning_rank.py --unlabeled-root /mnt/personal_drive/jwst/previews \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --out-csv ./logs/active_learning_batch.csv --top-n 500
+
+# Fill in the label column in logs/active_learning_batch.csv, then merge:
+python scripts/active_learning_merge.py --labels-csv ./logs/active_learning_batch.csv \
+  --out-root ./img_active --copy
+```
+
 JWST progress and log rotation:
 ```
 bash scripts/check_jwst_progress.sh
