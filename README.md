@@ -98,6 +98,13 @@ torchrun --nproc_per_node=2 evaluate_ood.py --id-root ./img --ood-root /mnt/pers
   --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv
 ```
 
+OOD DDP helper (auto-picks latest checkpoint):
+```
+bash scripts/run_ood_ddp.sh ./img /mnt/personal_drive/jwst/previews --ood-flat \
+  --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv \
+  --batch-size 256 --num-workers 8
+```
+
 JWST preview download (to UNAS):
 ```
 python scripts/download_jwst_previews.py --out-dir /mnt/personal_drive/jwst/previews \
