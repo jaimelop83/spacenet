@@ -91,6 +91,13 @@ python evaluate_ood.py --id-root ./img --ood-root ./ood_flat --ood-flat \
   --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv
 ```
 
+OOD per-image scores with DDP (both GPUs):
+```
+torchrun --nproc_per_node=2 evaluate_ood.py --id-root ./img --ood-root /mnt/personal_drive/jwst/previews --ood-flat \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --metric max_softmax --auto-threshold-tpr 0.95 --out-csv ./logs/ood_scores.csv
+```
+
 JWST preview download (to UNAS):
 ```
 python scripts/download_jwst_previews.py --out-dir /mnt/personal_drive/jwst/previews \

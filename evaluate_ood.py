@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import os
 from pathlib import Path
 
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, models, transforms
 from PIL import Image
 
@@ -59,6 +62,22 @@ def build_model(name, num_classes):
     return model
 
 
+def init_distributed():
+    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
+        dist.init_process_group(backend="nccl")
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        torch.cuda.set_device(local_rank)
+        distributed = True
+    else:
+        rank = 0
+        world_size = 1
+        local_rank = 0
+        distributed = False
+    return distributed, rank, world_size, local_rank
+
+
 class FlatImageFolder(torch.utils.data.Dataset):
     def __init__(self, root, transform=None):
         self.root = Path(root)
@@ -108,6 +127,26 @@ def load_checkpoint(model, path):
             k = k[len("module.") :]
         cleaned[k] = v
     model.load_state_dict(cleaned, strict=False)
+
+
+def gather_tensors(tensor):
+    if not dist.is_available() or not dist.is_initialized():
+        return tensor
+    world_size = dist.get_world_size()
+    gathered = [torch.zeros_like(tensor) for _ in range(world_size)]
+    dist.all_gather(gathered, tensor)
+    return torch.cat(gathered, dim=0)
+
+
+def gather_paths(paths):
+    if not dist.is_available() or not dist.is_initialized():
+        return paths
+    gathered = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(gathered, paths)
+    merged = []
+    for part in gathered:
+        merged.extend(part)
+    return merged
 
 
 def compute_scores(model, loader, metric, temperature, device):
@@ -188,6 +227,7 @@ def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
 
 def main():
     args = parse_args()
+    distributed, rank, world_size, local_rank = init_distributed()
     id_root = Path(args.id_root)
     ood_root = Path(args.ood_root)
     if not id_root.exists():
@@ -212,10 +252,23 @@ def main():
     id_ds = PathDataset(id_ds)
     if isinstance(ood_ds, datasets.ImageFolder):
         ood_ds = PathDataset(ood_ds)
+
+    id_sampler = (
+        DistributedSampler(id_ds, num_replicas=world_size, rank=rank, shuffle=False)
+        if distributed
+        else None
+    )
+    ood_sampler = (
+        DistributedSampler(ood_ds, num_replicas=world_size, rank=rank, shuffle=False)
+        if distributed
+        else None
+    )
+
     id_loader = DataLoader(
         id_ds,
         batch_size=args.batch_size,
         shuffle=False,
+        sampler=id_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
     )
@@ -223,6 +276,7 @@ def main():
         ood_ds,
         batch_size=args.batch_size,
         shuffle=False,
+        sampler=ood_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
     )
@@ -239,43 +293,54 @@ def main():
         model, ood_loader, args.metric, args.temperature, device
     )
 
-    scores = torch.cat([id_scores, ood_scores], dim=0)
-    labels = torch.cat([torch.ones_like(id_scores), torch.zeros_like(ood_scores)], dim=0)
+    id_scores = gather_tensors(id_scores)
+    ood_scores = gather_tensors(ood_scores)
+    id_preds = gather_tensors(id_preds)
+    ood_preds = gather_tensors(ood_preds)
+    id_paths = gather_paths(id_paths)
+    ood_paths = gather_paths(ood_paths)
 
-    auc, tpr, fpr = roc_auc(scores, labels)
-    fpr95 = fpr_at_tpr(tpr, fpr, target=0.95)
+    if rank == 0:
+        scores = torch.cat([id_scores, ood_scores], dim=0)
+        labels = torch.cat([torch.ones_like(id_scores), torch.zeros_like(ood_scores)], dim=0)
 
-    threshold = args.threshold
-    if args.auto_threshold_tpr is not None:
-        threshold = auto_threshold_from_id(id_scores, args.auto_threshold_tpr)
-        print(f"auto_threshold={threshold:.6f} (target_tpr={args.auto_threshold_tpr})")
+        auc, tpr, fpr = roc_auc(scores, labels)
+        fpr95 = fpr_at_tpr(tpr, fpr, target=0.95)
 
-    print(f"metric={args.metric}")
-    print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
-    print(f"AUROC={auc:.4f} FPR@95TPR={fpr95:.4f}")
-    if args.plot:
-        save_roc_plot(fpr, tpr, args.plot)
-        print(f"Saved ROC curve to {args.plot}")
-    if args.out_csv:
-        write_scores_csv(
-            args.out_csv,
-            id_scores,
-            id_preds,
-            id_paths,
-            id_ds.dataset.classes,
-            1,
-            threshold,
-        )
-        write_scores_csv(
-            args.out_csv,
-            ood_scores,
-            ood_preds,
-            ood_paths,
-            id_ds.dataset.classes,
-            0,
-            threshold,
-        )
-        print(f"Wrote per-image scores to {args.out_csv}")
+        threshold = args.threshold
+        if args.auto_threshold_tpr is not None:
+            threshold = auto_threshold_from_id(id_scores, args.auto_threshold_tpr)
+            print(f"auto_threshold={threshold:.6f} (target_tpr={args.auto_threshold_tpr})")
+
+        print(f"metric={args.metric}")
+        print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
+        print(f"AUROC={auc:.4f} FPR@95TPR={fpr95:.4f}")
+        if args.plot:
+            save_roc_plot(fpr, tpr, args.plot)
+            print(f"Saved ROC curve to {args.plot}")
+        if args.out_csv:
+            write_scores_csv(
+                args.out_csv,
+                id_scores,
+                id_preds,
+                id_paths,
+                id_ds.dataset.classes,
+                1,
+                threshold,
+            )
+            write_scores_csv(
+                args.out_csv,
+                ood_scores,
+                ood_preds,
+                ood_paths,
+                id_ds.dataset.classes,
+                0,
+                threshold,
+            )
+            print(f"Wrote per-image scores to {args.out_csv}")
+
+    if distributed:
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
