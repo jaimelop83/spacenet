@@ -240,10 +240,11 @@ def filter_bad_samples(samples):
     return good, skipped
 
 
-def write_scores_csv(path, scores, preds, paths, classes, label, threshold):
+def write_scores_csv(path, scores, preds, paths, classes, label, threshold, skipped_id, skipped_ood):
     with open(path, "a", newline="") as f:
         writer = csv.writer(f)
         if f.tell() == 0:
+            writer.writerow(["# skipped_id", skipped_id, "skipped_ood", skipped_ood])
             writer.writerow(["path", "score", "pred_class", "ood_pred", "is_id"])
         for score, pred, p in zip(scores, preds, paths):
             if threshold is None:
@@ -359,19 +360,23 @@ def main():
                 id_scores,
                 id_preds,
                 id_paths,
-                id_ds.dataset.classes,
-                1,
-                threshold,
-            )
-            write_scores_csv(
-                args.out_csv,
-                ood_scores,
-                ood_preds,
-                ood_paths,
-                id_ds.dataset.classes,
-                0,
-                threshold,
-            )
+            id_ds.dataset.classes,
+            1,
+            threshold,
+            id_skipped,
+            ood_skipped,
+        )
+        write_scores_csv(
+            args.out_csv,
+            ood_scores,
+            ood_preds,
+            ood_paths,
+            id_ds.dataset.classes,
+            0,
+            threshold,
+            id_skipped,
+            ood_skipped,
+        )
             print(f"Wrote per-image scores to {args.out_csv}")
 
     if distributed:
