@@ -76,3 +76,10 @@ Quick OOD eval using latest checkpoint:
 ```
 bash scripts/run_ood_eval.sh ./img ./ood_flat --ood-flat --metric energy --plot ./logs/ood_roc.png
 ```
+
+Visual report (confusion matrix, sample grid, training curves):
+```
+python report_visuals.py --data-root ./img \
+  --checkpoint ./checkpoints/spacenet_convnext_tiny_<timestamp>.pt \
+  --csv-log ./logs/train_metrics.csv --out-dir ./reports
+```
