@@ -3,10 +3,8 @@ set -euo pipefail
 
 CRON_LINE="0 21 * * * /home/jaimelop/spacenet/scripts/download_jwst_fits.py --out-dir /mnt/personal_drive/jwst/fits --max-files 500 --instruments NIRCAM MIRI >> /mnt/personal_drive/jwst/logs/jwst_fits_\\$(date +\\%F).log 2>&1"
 ROTATE_LINE="30 21 * * * /home/jaimelop/spacenet/scripts/rotate_jwst_logs.sh 14 >> /mnt/personal_drive/jwst/logs/jwst_rotate_\\$(date +\\%F).log 2>&1"
-EMAIL_LINE="45 21 * * * /home/jaimelop/spacenet/scripts/send_jwst_summary.py >> /mnt/personal_drive/jwst/logs/jwst_email_\\$(date +\\%F).log 2>&1"
 CRON_TAG="# jwst_fits_download"
 ROTATE_TAG="# jwst_fits_rotate"
-EMAIL_TAG="# jwst_fits_email"
 
 mkdir -p /mnt/personal_drive/jwst/logs
 
@@ -23,11 +21,6 @@ else
   existing="${existing}\n${ROTATE_LINE} ${ROTATE_TAG}"
 fi
 
-if echo "$existing" | grep -q "$EMAIL_TAG"; then
-  echo "Email cron entry already exists."
-else
-  existing="${existing}\n${EMAIL_LINE} ${EMAIL_TAG}"
-fi
 
 printf "%b\n" "$existing" | crontab -
 
