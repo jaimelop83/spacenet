@@ -131,6 +131,9 @@ def main():
     <div class="stats" style="margin-top:10px;">
       <span class="chip"><a href="ood_examples_ood.html" style="text-decoration:none;color:inherit;">View OOD Examples</a></span>
       <span class="chip"><a href="ood_examples_id.html" style="text-decoration:none;color:inherit;">View ID Examples</a></span>
+      <span class="chip"><a href="ood_score_hist_per_class.png" style="text-decoration:none;color:inherit;">Per-Class Histogram</a></span>
+      <span class="chip"><a href="ood_per_class/" style="text-decoration:none;color:inherit;">Per-Class Images</a></span>
+      <span class="chip"><a href="active_labeler.html" style="text-decoration:none;color:inherit;">Active Labeler</a></span>
     </div>
   </header>
   <main>
