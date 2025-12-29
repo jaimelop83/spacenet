@@ -182,6 +182,16 @@ Nightly cron schedule (default):
 - 21:30 log rotation (compress older logs)
 - 01:00 OOD eval on FITS (writes CSV to `/mnt/personal_drive/jwst/logs/`)
 
+Reports on UNAS (serve gallery + examples from port 8001):
+```
+sudo rsync -a --copy-links --delete /home/jaimelop/spacenet/reports/ /mnt/personal_drive/reports/
+```
+
+Gallery links (after sync):
+- http://<your-lambda-quad-ip>:8001/reports/ood_gallery.html
+- http://<your-lambda-quad-ip>:8001/reports/ood_examples_ood.html
+- http://<your-lambda-quad-ip>:8001/reports/ood_examples_id.html
+
 
 Visual report (confusion matrix, sample grid, training curves):
 ```
