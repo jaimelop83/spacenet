@@ -112,6 +112,13 @@ bash scripts/run_ood_ddp_fits.sh /mnt/personal_drive/jwst/fits --metric max_soft
   --batch-size 256 --num-workers 8
 ```
 
+FITS OOD examples (HTML pages + copied images for serving):
+```
+python scripts/make_ood_examples.py --csv-path /mnt/personal_drive/jwst/logs/ood_scores_fits_png.csv \
+  --out-dir /home/jaimelop/spacenet/reports/fits_ood_examples \
+  --top-n 60 --copy --html-prefix fits_ood_examples
+```
+
 JWST preview download (to UNAS):
 ```
 python scripts/download_jwst_previews.py --out-dir /mnt/personal_drive/jwst/previews \
@@ -191,6 +198,8 @@ Gallery links (after sync):
 - http://<your-lambda-quad-ip>:8001/reports/ood_gallery.html
 - http://<your-lambda-quad-ip>:8001/reports/ood_examples_ood.html
 - http://<your-lambda-quad-ip>:8001/reports/ood_examples_id.html
+- http://<your-lambda-quad-ip>:8001/reports/fits_ood_examples_ood.html
+- http://<your-lambda-quad-ip>:8001/reports/fits_ood_examples_id.html
 
 
 Visual report (confusion matrix, sample grid, training curves):

@@ -197,7 +197,7 @@ def main():
         model = DDP(model, device_ids=[local_rank])
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=args.amp)
     start_epoch = 1
     if args.resume:
         ckpt = torch.load(args.resume, map_location="cpu")
@@ -239,7 +239,7 @@ def main():
             images = torch.cat([x1, x2], dim=0)
 
             optimizer.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=args.amp):
+            with torch.amp.autocast("cuda", enabled=args.amp):
                 z = model(images)
                 loss = nt_xent_loss(z, args.temperature)
             scaler.scale(loss).backward()

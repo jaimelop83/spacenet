@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, models, transforms
 from PIL import Image, UnidentifiedImageError
+import numpy as np
 
 
 def parse_args():
@@ -78,6 +79,37 @@ def init_distributed():
     return distributed, rank, world_size, local_rank
 
 
+def load_image(path):
+    path = Path(path)
+    if path.suffix.lower() in {".fits", ".fit", ".fts"} or path.name.lower().endswith(".fits.gz"):
+        try:
+            from astropy.io import fits
+        except ImportError as exc:
+            raise RuntimeError("astropy is required to load FITS files.") from exc
+        data = fits.getdata(path, memmap=False)
+        if data is None:
+            raise ValueError("Empty FITS data.")
+        arr = np.array(data)
+        if arr.ndim > 2:
+            arr = arr[0]
+        if np.iscomplexobj(arr):
+            arr = np.abs(arr)
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        lo, hi = np.percentile(arr, (1.0, 99.0))
+        if hi <= lo:
+            lo, hi = float(arr.min()), float(arr.max())
+        if hi <= lo:
+            arr = np.zeros_like(arr, dtype=np.float32)
+        else:
+            arr = (arr - lo) / (hi - lo)
+            arr = np.clip(arr, 0.0, 1.0)
+        arr = (arr * 255.0).astype(np.uint8)
+        img = Image.fromarray(arr, mode="L").convert("RGB")
+        return img
+    with Image.open(path) as img:
+        return img.convert("RGB")
+
+
 class FlatImageFolder(torch.utils.data.Dataset):
     def __init__(self, root, transform=None):
         self.root = Path(root)
@@ -87,10 +119,12 @@ class FlatImageFolder(torch.utils.data.Dataset):
 
     @staticmethod
     def _collect_images(root):
-        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".fits", ".fit", ".fts", ".fits.gz"}
         files = []
         for path in root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in exts:
+            if not path.is_file():
+                continue
+            if path.suffix.lower() in exts or path.name.lower().endswith(".fits.gz"):
                 files.append(path)
         return sorted(files)
 
@@ -100,10 +134,9 @@ class FlatImageFolder(torch.utils.data.Dataset):
         skipped = 0
         for path in paths:
             try:
-                with Image.open(path) as img:
-                    img.verify()
+                _ = load_image(path)
                 good.append(path)
-            except (UnidentifiedImageError, OSError):
+            except (UnidentifiedImageError, OSError, RuntimeError, ValueError):
                 skipped += 1
                 continue
         return good, skipped
@@ -113,8 +146,7 @@ class FlatImageFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         path = self.samples[idx]
-        with Image.open(path) as img:
-            img = img.convert("RGB")
+        img = load_image(path)
         if self.transform:
             img = self.transform(img)
         return img, 0, str(path)
@@ -187,6 +219,8 @@ def compute_scores(model, loader, metric, temperature, device):
             scores.append(score.detach().cpu())
             preds.append(logits.argmax(dim=1).detach().cpu())
             paths.extend(batch_paths)
+    if not scores:
+        return torch.empty(0, dtype=torch.float32), torch.empty(0, dtype=torch.long), paths
     return torch.cat(scores, dim=0), torch.cat(preds, dim=0), paths
 
 
@@ -238,10 +272,9 @@ def filter_bad_samples(samples):
     skipped = 0
     for path, target in samples:
         try:
-            with Image.open(path) as img:
-                img.verify()
+            _ = load_image(path)
             good.append((path, target))
-        except (UnidentifiedImageError, OSError):
+        except (UnidentifiedImageError, OSError, RuntimeError, ValueError):
             skipped += 1
             continue
     return good, skipped
@@ -341,6 +374,51 @@ def main():
     ood_preds = gather_tensors(ood_preds)
     id_paths = gather_paths(id_paths)
     ood_paths = gather_paths(ood_paths)
+
+    empty_id = len(id_scores) == 0
+    empty_ood = len(ood_scores) == 0
+    if empty_id or empty_ood:
+        if rank == 0:
+            print(f"metric={args.metric}")
+            print(f"id_samples={len(id_scores)} ood_samples={len(ood_scores)}")
+            print(f"skipped_id={id_skipped} skipped_ood={ood_skipped}")
+            if empty_id:
+                print("No valid ID samples available; skipping OOD metrics.")
+            if empty_ood:
+                print("No valid OOD samples available; skipping OOD metrics.")
+            if args.auto_threshold_tpr is not None:
+                print("Auto-threshold skipped because scores are unavailable.")
+            if args.plot:
+                print("Skipping ROC plot because metrics could not be computed.")
+            if args.out_csv:
+                if not empty_id:
+                    write_scores_csv(
+                        args.out_csv,
+                        id_scores,
+                        id_preds,
+                        id_paths,
+                        id_ds.dataset.classes,
+                        1,
+                        args.threshold,
+                        id_skipped,
+                        ood_skipped,
+                    )
+                if not empty_ood:
+                    write_scores_csv(
+                        args.out_csv,
+                        ood_scores,
+                        ood_preds,
+                        ood_paths,
+                        id_ds.dataset.classes,
+                        0,
+                        args.threshold,
+                        id_skipped,
+                        ood_skipped,
+                    )
+                print(f"Wrote per-image scores to {args.out_csv}")
+        if distributed:
+            dist.destroy_process_group()
+        return
 
     if rank == 0:
         scores = torch.cat([id_scores, ood_scores], dim=0)

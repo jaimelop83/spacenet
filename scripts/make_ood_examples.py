@@ -12,6 +12,11 @@ def parse_args():
     parser.add_argument("--top-n", type=int, default=60)
     parser.add_argument("--copy", action="store_true", help="Copy images instead of symlinking.")
     parser.add_argument(
+        "--html-prefix",
+        default="ood_examples",
+        help="Prefix for generated HTML files (default: ood_examples).",
+    )
+    parser.add_argument(
         "--include-pattern",
         default="",
         help="Only include files whose names contain this substring (case-insensitive).",
@@ -173,10 +178,12 @@ def main():
             }
         )
 
-    write_html(ood_items, out_dir.parent / "ood_examples_ood.html", "OOD Examples")
-    write_html(id_items, out_dir.parent / "ood_examples_id.html", "ID Examples")
-    print(f"wrote {out_dir.parent / 'ood_examples_ood.html'}")
-    print(f"wrote {out_dir.parent / 'ood_examples_id.html'}")
+    ood_html = out_dir.parent / f"{args.html_prefix}_ood.html"
+    id_html = out_dir.parent / f"{args.html_prefix}_id.html"
+    write_html(ood_items, ood_html, "OOD Examples")
+    write_html(id_items, id_html, "ID Examples")
+    print(f"wrote {ood_html}")
+    print(f"wrote {id_html}")
     if skipped_missing:
         print(f"skipped_missing={skipped_missing}")
 

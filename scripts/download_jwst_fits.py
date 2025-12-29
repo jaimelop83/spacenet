@@ -10,6 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Download JWST calibrated FITS data from MAST.")
     parser.add_argument("--out-dir", required=True, help="Output directory for downloads.")
     parser.add_argument("--max-files", type=int, default=500)
+    parser.add_argument("--limit", dest="max_files", type=int, help="Alias for --max-files.")
     parser.add_argument("--max-obs", type=int, default=2000)
     parser.add_argument(
         "--instruments",
